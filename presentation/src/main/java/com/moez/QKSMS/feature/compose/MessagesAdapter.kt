@@ -60,6 +60,8 @@ import io.reactivex.subjects.PublishSubject
 import io.reactivex.subjects.Subject
 import io.realm.RealmResults
 import kotlinx.android.synthetic.main.message_list_item_in.view.*
+import java.security.KeyPair
+import java.security.KeyPairGenerator
 import java.util.*
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
@@ -237,6 +239,8 @@ class MessagesAdapter @Inject constructor(
             view.avatar.setContact(contactCache[message.address])
             view.avatar.setVisible(!canGroup(message, next), View.INVISIBLE)
         }
+
+        //TODO: Encrypt and decrypt here
 
         // Bind the body text
         val messageText = when (message.isSms()) {

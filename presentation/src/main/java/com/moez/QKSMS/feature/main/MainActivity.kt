@@ -20,15 +20,24 @@ package com.moez.QKSMS.feature.main
 
 import android.Manifest
 import android.animation.ObjectAnimator
+import android.annotation.SuppressLint
+import android.annotation.TargetApi
 import android.app.AlertDialog
+import android.content.Context
 import android.content.Intent
 import android.content.res.ColorStateList
+import android.os.Build
 import android.os.Bundle
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
+import android.util.Base64
+import android.util.Log
 import android.view.Gravity
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewStub
+import androidx.annotation.RequiresApi
 import androidx.appcompat.app.ActionBarDrawerToggle
 import androidx.core.app.ActivityCompat
 import androidx.core.view.GravityCompat
@@ -68,6 +77,18 @@ import kotlinx.android.synthetic.main.drawer_view.*
 import kotlinx.android.synthetic.main.main_activity.*
 import kotlinx.android.synthetic.main.main_permission_hint.*
 import kotlinx.android.synthetic.main.main_syncing.*
+import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
+import java.security.KeyPairGenerator
+import java.security.PrivateKey
+import java.security.PublicKey
+import java.security.SecureRandom
+import java.security.interfaces.ECPrivateKey
+import java.security.interfaces.ECPublicKey
+import java.security.spec.ECGenParameterSpec
+import javax.crypto.Cipher
+
 import javax.inject.Inject
 
 class MainActivity : QkThemedActivity(), MainView {
@@ -123,6 +144,48 @@ class MainActivity : QkThemedActivity(), MainView {
     private val snackbar by lazy { findViewById<View>(R.id.snackbar) }
     private val syncing by lazy { findViewById<View>(R.id.syncing) }
     private val backPressedSubject: Subject<NavItem> = PublishSubject.create()
+    private val cipher: Cipher = Cipher.getInstance("RSA/ECB/PKCS1Padding")
+
+    private fun createAndWriteKeys(priv: String, pub: String) {
+        val path = applicationContext.filesDir
+        val letDirectory = File(path, "KEYS")
+        letDirectory.mkdirs()
+        val privkey = File(letDirectory, "privkey.txt")
+        val pubkey = File(letDirectory, "pubkey.txt")
+        FileOutputStream(privkey).use {
+            it.write(priv.toByteArray())
+        }
+        FileOutputStream(pubkey).use {
+            it.write(pub.toByteArray())
+        }
+    }
+
+    private fun readKeys() : Boolean {
+        val path = applicationContext.filesDir
+        val letDirectory = File(path, "KEYS")
+        val privkey = File(letDirectory, "privkey.txt")
+        val pubkey = File(letDirectory, "pubkey.txt")
+        println("FOUND!!")
+        if (privkey.exists() && pubkey.exists()) {
+            println(FileInputStream(privkey).bufferedReader().use { it.readText() })
+            println("PUB:\n" + FileInputStream(pubkey).bufferedReader().use { it.readText() })
+        }
+        return privkey.exists() && pubkey.exists()
+    }
+
+    fun encrypt(data: String, key: PublicKey?): String {
+        cipher.init(Cipher.ENCRYPT_MODE, key)
+        val bytes = cipher.doFinal(data.toByteArray())
+        return Base64.encodeToString(bytes, Base64.NO_WRAP)
+    }
+
+
+    fun decrypt(data: String, key: PrivateKey?): String {
+        cipher.init(Cipher.DECRYPT_MODE, key)
+        val encryptedData = Base64.decode(data, Base64.NO_WRAP)
+        val decodedData = cipher.doFinal(encryptedData)
+        return String(decodedData)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         AndroidInjection.inject(this)
@@ -130,6 +193,34 @@ class MainActivity : QkThemedActivity(), MainView {
         setContentView(R.layout.main_activity)
         viewModel.bindView(this)
         onNewIntentIntent.onNext(intent)
+
+        if (readKeys()) {
+            val generator = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_RSA)
+
+
+
+            generator.initialize(2048, SecureRandom())
+            val keypair = generator.genKeyPair()
+//            val kpg: KeyPairGenerator = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_EC, "AndroidKeyStore")
+//            val parameterSpec =
+//                    KeyGenParameterSpec.Builder("container", KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
+//                            .setAlgorithmParameterSpec(ECGenParameterSpec("secp256r1"))
+//                            .setDigests(KeyProperties.DIGEST_SHA256, KeyProperties.DIGEST_SHA384, KeyProperties.DIGEST_SHA512)
+//                            .build()
+//            kpg.initialize(parameterSpec)
+//            val keyPair = kpg.generateKeyPair()
+//            val ecPublicKey = keyPair.public
+//            val ecPrivateKey = keyPair.private
+            val pubKeyString = String(Base64.encode(keypair.public.encoded, Base64.NO_WRAP))
+            println("PUBKEY:\n$pubKeyString")
+            val privKeyString = String(Base64.encode(keypair.private.encoded, Base64.NO_WRAP))
+            println("PRIVKEY:\n$privKeyString")
+            createAndWriteKeys(privKeyString, pubKeyString)
+            val key = encrypt("HI", keypair.public)
+
+            println(key)
+            println(decrypt(key, keypair.private))
+        }
 
         (snackbar as? ViewStub)?.setOnInflateListener { _, _ ->
             snackbarButton.clicks().autoDisposable(scope()).subscribe(snackbarButtonIntent)
