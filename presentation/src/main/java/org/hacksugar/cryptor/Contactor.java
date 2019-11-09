@@ -18,7 +18,7 @@ public class Contactor {
             Class.forName("com.mysql.jdbc.Driver");
 
             conn = DriverManager.getConnection(
-                    "jdbc:mysql://18.217.149.1:1521/hashes", "root",
+                    "jdbc:mysql://18.217.149.1:3306/hashes", "root",
                     "i be tard"
             );
         } catch (ClassNotFoundException | SQLException e) {

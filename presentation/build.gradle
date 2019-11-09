@@ -87,6 +87,7 @@ configurations {
 }
 
 dependencies {
+    implementation 'org.mongodb:mongo-java-driver:3.11.2'
     // lifecycle
     implementation "androidx.lifecycle:lifecycle-extensions:$lifecycle_version"
     implementation "androidx.lifecycle:lifecycle-common-java8:$lifecycle_version"

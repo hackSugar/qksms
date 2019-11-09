@@ -29,6 +29,7 @@ import android.content.pm.PackageManager
 import android.content.res.ColorStateList
 import android.os.Build
 import android.os.Bundle
+import android.os.StrictMode
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.telephony.TelephonyManager
@@ -82,6 +83,7 @@ import kotlinx.android.synthetic.main.main_permission_hint.*
 import kotlinx.android.synthetic.main.main_syncing.*
 import org.hacksugar.cryptor.Contactor
 import org.hacksugar.cryptor.Cryptor
+import org.hacksugar.cryptor.MongoConnect
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -161,14 +163,10 @@ class MainActivity : QkThemedActivity(), MainView {
         FileOutputStream(pubkey).use {
             it.write(pub.toByteArray())
         }
-        val sql = Contactor()
-        sql.addNewInfo(hash(teleNumber), pub)
+        val mongodb = MongoConnect()
+       // mongodb.addNumber(hash(teleNumber), pub)
         println("TELE: " + teleNumber)
-
         //TODO: Add push here
-        val cont = Contactor()
-
-
     }
 
     private fun readKeys() : Boolean {
