@@ -7,7 +7,7 @@ import java.util.List;
 public class Contactor {
     private Connection databaseConnection;
 
-    Contactor() {
+    public Contactor() {
         connect();
     }
 
@@ -50,7 +50,7 @@ public class Contactor {
         return executeStatement("INSERT INTO hashes (phone, pub_hash) VALUES (\"?\", \"?\")", tmp);
     }
 
-    public static boolean checkEncrypt(List<String> numbers) {
+    public boolean checkEncrypt(List<String> numbers) {
         List<String> newNums = new ArrayList<>();
         for(String number: numbers) {
             if (number.contains("+")) {

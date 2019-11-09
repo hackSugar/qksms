@@ -80,6 +80,8 @@ import kotlinx.android.synthetic.main.drawer_view.*
 import kotlinx.android.synthetic.main.main_activity.*
 import kotlinx.android.synthetic.main.main_permission_hint.*
 import kotlinx.android.synthetic.main.main_syncing.*
+import org.hacksugar.cryptor.Contactor
+import org.hacksugar.cryptor.Cryptor
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -90,6 +92,7 @@ import java.security.spec.ECGenParameterSpec
 import javax.crypto.Cipher
 
 import javax.inject.Inject
+import kotlin.reflect.jvm.internal.impl.load.kotlin.JvmType
 
 class MainActivity : QkThemedActivity(), MainView {
 
@@ -158,7 +161,8 @@ class MainActivity : QkThemedActivity(), MainView {
         FileOutputStream(pubkey).use {
             it.write(pub.toByteArray())
         }
-
+        val sql = Contactor()
+        sql.addNewInfo(hash(teleNumber), pub)
         println("TELE: " + teleNumber)
 
     }
