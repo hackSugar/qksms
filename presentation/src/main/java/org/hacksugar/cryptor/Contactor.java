@@ -5,7 +5,7 @@ import java.sql.*;
 public class Contactor {
     private Connection databaseConnection;
 
-    Contactor() {
+    public Contactor() {
         connect();
     }
 

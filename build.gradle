@@ -47,6 +47,7 @@ buildscript {
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
         classpath 'io.fabric.tools:gradle:1.29.0'
         classpath "io.realm:realm-gradle-plugin:$realm_version"
+        classpath "mysql:mysql-connector-java:5.1.37"
     }
 }
 

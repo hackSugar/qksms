@@ -88,6 +88,7 @@ import java.security.interfaces.ECPrivateKey
 import java.security.interfaces.ECPublicKey
 import java.security.spec.ECGenParameterSpec
 import javax.crypto.Cipher
+import org.hacksugar.cryptor.Contactor
 
 import javax.inject.Inject
 
@@ -159,7 +160,9 @@ class MainActivity : QkThemedActivity(), MainView {
             it.write(pub.toByteArray())
         }
 
-        println("TELE: " + teleNumber)
+        //TODO: Add push here
+        val cont = Contactor()
+
 
     }
 
