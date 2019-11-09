@@ -25,11 +25,13 @@ import android.annotation.TargetApi
 import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.res.ColorStateList
 import android.os.Build
 import android.os.Bundle
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
+import android.telephony.TelephonyManager
 import android.util.Base64
 import android.util.Log
 import android.view.Gravity
@@ -40,6 +42,7 @@ import android.view.ViewStub
 import androidx.annotation.RequiresApi
 import androidx.appcompat.app.ActionBarDrawerToggle
 import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import androidx.core.view.GravityCompat
 import androidx.core.view.isVisible
 import androidx.lifecycle.ViewModelProvider
@@ -80,10 +83,7 @@ import kotlinx.android.synthetic.main.main_syncing.*
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
-import java.security.KeyPairGenerator
-import java.security.PrivateKey
-import java.security.PublicKey
-import java.security.SecureRandom
+import java.security.*
 import java.security.interfaces.ECPrivateKey
 import java.security.interfaces.ECPublicKey
 import java.security.spec.ECGenParameterSpec
@@ -146,7 +146,7 @@ class MainActivity : QkThemedActivity(), MainView {
     private val backPressedSubject: Subject<NavItem> = PublishSubject.create()
     private val cipher: Cipher = Cipher.getInstance("RSA/ECB/PKCS1Padding")
 
-    private fun createAndWriteKeys(priv: String, pub: String) {
+    private fun createAndWriteKeys(priv: String, pub: String, teleNumber: String) {
         val path = applicationContext.filesDir
         val letDirectory = File(path, "KEYS")
         letDirectory.mkdirs()
@@ -158,6 +158,9 @@ class MainActivity : QkThemedActivity(), MainView {
         FileOutputStream(pubkey).use {
             it.write(pub.toByteArray())
         }
+
+        println("TELE: " + teleNumber)
+
     }
 
     private fun readKeys() : Boolean {
@@ -187,17 +190,22 @@ class MainActivity : QkThemedActivity(), MainView {
         return String(decodedData)
     }
 
+    fun hash(number: String): String {
+        val bytes = number.toByteArray()
+        val md = MessageDigest.getInstance("SHA-256")
+        val digest = md.digest(bytes)
+        return digest.fold("", { str, it -> str + "%02x".format(it) })
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         AndroidInjection.inject(this)
         super.onCreate(savedInstanceState)
         setContentView(R.layout.main_activity)
         viewModel.bindView(this)
         onNewIntentIntent.onNext(intent)
-
+        var telNumber = ""
         if (readKeys()) {
             val generator = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_RSA)
-
-
 
             generator.initialize(2048, SecureRandom())
             val keypair = generator.genKeyPair()
@@ -211,11 +219,22 @@ class MainActivity : QkThemedActivity(), MainView {
 //            val keyPair = kpg.generateKeyPair()
 //            val ecPublicKey = keyPair.public
 //            val ecPrivateKey = keyPair.private
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE)
+                    != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this,
+                        arrayOf(Manifest.permission.READ_PHONE_STATE),
+                        0)
+            } else {
+                val tm = getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
+                telNumber = tm.line1Number
+            }
             val pubKeyString = String(Base64.encode(keypair.public.encoded, Base64.NO_WRAP))
             println("PUBKEY:\n$pubKeyString")
             val privKeyString = String(Base64.encode(keypair.private.encoded, Base64.NO_WRAP))
             println("PRIVKEY:\n$privKeyString")
-            createAndWriteKeys(privKeyString, pubKeyString)
+            if (telNumber != "") {
+                createAndWriteKeys(privKeyString, pubKeyString, telNumber)
+            }
             val key = encrypt("HI", keypair.public)
 
             println(key)
