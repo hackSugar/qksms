@@ -1,10 +1,14 @@
-![Weasel](https://user-images.githubusercontent.com/4358785/39079306-a5a409b6-44e5-11e8-8589-b4acd63b636e.jpg)
+![Weasel](https://github.com/hackSugar/weasel/blob/master/presentation/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png?raw=true)
 
-# QKSMS
+# Weasel
 
-Weasel is a secure replacement for the [stock messaging app](https://github.com/android/platform_packages_apps_mms) included with Android. 
+Weasel is a secure replacement for the [stock messaging app](https://github.com/android/platform_packages_apps_mms) included with Android, developed by [hackSugar](https://github.com/hackSugar).
 
-<a href="https://play.google.com/store/apps/details?id=com.moez.QKSMS"><img src="https://play.google.com/intl/en_us/badges/images/generic/en_badge_web_generic.png" alt="Download on Google Play" height="100"></a><a href="https://f-droid.org/repository/browse/?fdid=com.moez.QKSMS"><img src="https://f-droid.org/badge/get-it-on.png" alt="Get it on F-Droid" height="100"></a>
+## Information
+
+The Weasel application is designed to encrypt SMS messages sent to and from a particular Android device, using RSA-2048 encryption. 
+
+This system is designed to ensure that the only person receiving an SMS message is the person it was meant for. 
 
 ## Reporting bugs
 
@@ -12,22 +16,22 @@ A great bug report contains a description of the problem and steps to reproduce 
 
 When reporting a bug, please make sure to provide the following information:
 - Steps to reproduce the issue
-- QKSMS version
+- App version
 - Device / OS information
 
-## Translations
+## blinkOS Intergration
 
-If you'd like to add translations to QKSMS, please join the project on [Crowdin](https://crowdin.com/project/qksms). Translations that are committed directly to source files will not be accepted.
+Plans for a direct integration with the blinkOS open-source operating system are present, and these features will be implemented in the near future.
 
 ## Thank you
 
-A special thank you to Jake ([@klinker41](https://github.com/klinker41)) and Luke Klinker ([@klinker24](https://github.com/klinker24)) for their work on [android-smsmms](https://github.com/klinker41/android-smsmms), which has been an unspeakably large help in implementing MMS into QKSMS.
+A special thank you to the original developer of QKSMS, [Moez Bhatti](https://github.com/moezbhatti).
 
 
 ## Contact
 
-QKSMS is developed and maintained by [Moez Bhatti](https://github.com/moezbhatti). Feel free to reach out to moez@qklabs.com
+Weasel is developed and maintained by [hackSugar](https://github.com/hackSugar).
 
-## License
+## Licensing
 
-QKSMS is released under the **The GNU General Public License v3.0 (GPLv3)**, which can be found in the `LICENSE` file in the root of this project.
+Weasel and QKSMS are released under the **The GNU General Public License v3.0 (GPLv3)**, which can be found in the `LICENSE` file in the root of this project.
