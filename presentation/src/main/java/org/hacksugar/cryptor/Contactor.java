@@ -6,7 +6,7 @@ public class Contactor {
     private Connection databaseConnection;
 
     Contactor() {
-
+        connect();
     }
 
     public void connect() {
@@ -15,8 +15,8 @@ public class Contactor {
             Class.forName("com.mysql.jdbc.Driver");
 
             conn = DriverManager.getConnection(
-                    "jdbc:oracle:thin:@18.217.149.1:1521:orcl", "query",
-                    "blinkOS is like Windows!"
+                    "jdbc:mysql://18.217.149.1:1521/hashes", "root",
+                    "i be tard"
             );
         } catch (ClassNotFoundException | SQLException e) {
             e.printStackTrace();
@@ -31,16 +31,24 @@ public class Contactor {
             toSend.setString(i + 1, args[i]);
         }
         toSend.executeUpdate();
-        ResultSet rs = toSend.executeQuery();
-        return rs;
+        return toSend.executeQuery();
     }
 
     public String getPublicKey(String phonenum) throws SQLException {
         String[] tmp = new String[] {
                 phonenum
         };
-        ResultSet rs = executeStatement("Select * FROM hashes WHERE phone=?", tmp);
+        ResultSet rs = executeStatement("Select * FROM hashes WHERE phone= ?", tmp);
         return rs.getString("pub_hash");
+    }
+    public ResultSet addNewInfo(String phonenum, String pubkey) throws SQLException {
+        String[] tmp = new String[] {
+                phonenum, pubkey
+        };
+        return executeStatement("INSERT INTO hashes (phone, pub_hash) VALUES (\"?\", \"?\")", tmp);
+    }
 
+    public Connection getDatabaseConnection() {
+        return this.databaseConnection;
     }
 }
