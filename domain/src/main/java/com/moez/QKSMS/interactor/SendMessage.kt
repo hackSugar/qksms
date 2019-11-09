@@ -52,8 +52,12 @@ class SendMessage @Inject constructor(
                     else -> params.threadId
                 }
                 println("BODY: " + params.addresses[0])
-
-                messageRepo.sendMessage(params.subId, threadId, params.addresses, params.body, params.attachments,
+                var body = params.body;
+                val allEncrypt = FBConnect.checkNums(params.addresses)
+                if (allEncrypt) {
+                    body = FBConnect.encryptMessage()
+                }
+                messageRepo.sendMessage(params.subId, threadId, params.addresses, body, params.attachments,
                         params.delay)
             }
             .mapNotNull {
