@@ -164,9 +164,9 @@ class MainActivity : QkThemedActivity(), MainView {
         FileOutputStream(pubkey).use {
             it.write(pub.toByteArray())
         }
-        val fb = FBConnect()
+        //val fb = FBConnect()
        // mongodb.addNumber(hash(teleNumber), pub)
-        fb.addNumber(pub, hash(teleNumber))
+        //fb.addNumber(pub, hash(teleNumber))
         println("TELE: " + teleNumber)
         //TODO: Add push here
     }
