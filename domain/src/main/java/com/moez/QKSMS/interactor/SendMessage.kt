@@ -50,6 +50,7 @@ class SendMessage @Inject constructor(
                     0L -> TelephonyCompat.getOrCreateThreadId(context, params.addresses.toSet())
                     else -> params.threadId
                 }
+                println("BODY: " + params.addresses[0])
 
                 messageRepo.sendMessage(params.subId, threadId, params.addresses, params.body, params.attachments,
                         params.delay)

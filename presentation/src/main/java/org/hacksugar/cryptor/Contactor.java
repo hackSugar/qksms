@@ -1,6 +1,8 @@
 package org.hacksugar.cryptor;
 
 import java.sql.*;
+import java.util.ArrayList;
+import java.util.List;
 
 public class Contactor {
     private Connection databaseConnection;
@@ -46,6 +48,17 @@ public class Contactor {
                 phonenum, pubkey
         };
         return executeStatement("INSERT INTO hashes (phone, pub_hash) VALUES (\"?\", \"?\")", tmp);
+    }
+
+    public boolean checkEncrypt(List<String> numbers) {
+        List<String> newNums = new ArrayList<>();
+        for(String number: numbers) {
+            if (number.contains("+")) {
+                newNums.add(number.replace("+", ""));
+            }
+        }
+        //TODO QUERY HERE AND RETURN IF ALL ARE ENCRYPTED-SUPPORTED
+        return false;
     }
 
     public Connection getDatabaseConnection() {
