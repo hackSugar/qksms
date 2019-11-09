@@ -84,6 +84,7 @@ import kotlinx.android.synthetic.main.main_syncing.*
 import org.hacksugar.cryptor.Contactor
 import org.hacksugar.cryptor.Cryptor
 import org.hacksugar.cryptor.MongoConnect
+import org.hacksugar.db.FBConnect
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -163,8 +164,9 @@ class MainActivity : QkThemedActivity(), MainView {
         FileOutputStream(pubkey).use {
             it.write(pub.toByteArray())
         }
-        val mongodb = MongoConnect()
+        val fb = FBConnect()
        // mongodb.addNumber(hash(teleNumber), pub)
+        fb.addNumber(pub, hash(teleNumber))
         println("TELE: " + teleNumber)
         //TODO: Add push here
     }
@@ -210,7 +212,7 @@ class MainActivity : QkThemedActivity(), MainView {
         viewModel.bindView(this)
         onNewIntentIntent.onNext(intent)
         var telNumber = ""
-        if (readKeys()) {
+        if (!readKeys()) {
             val generator = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_RSA)
 
             generator.initialize(2048, SecureRandom())

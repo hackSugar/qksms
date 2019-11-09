@@ -25,6 +25,7 @@ import com.moez.QKSMS.model.Attachment
 import com.moez.QKSMS.repository.ConversationRepository
 import com.moez.QKSMS.repository.MessageRepository
 import io.reactivex.Flowable
+import org.hacksugar.db.FBConnect
 import javax.inject.Inject
 
 class SendMessage @Inject constructor(
