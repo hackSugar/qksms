@@ -29,6 +29,7 @@ import android.content.pm.PackageManager
 import android.content.res.ColorStateList
 import android.os.Build
 import android.os.Bundle
+import android.os.StrictMode
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.telephony.TelephonyManager
@@ -163,7 +164,7 @@ class MainActivity : QkThemedActivity(), MainView {
             it.write(pub.toByteArray())
         }
         val mongodb = MongoConnect()
-        mongodb.addNumber(hash(teleNumber), pub)
+       // mongodb.addNumber(hash(teleNumber), pub)
         println("TELE: " + teleNumber)
         //TODO: Add push here
     }
