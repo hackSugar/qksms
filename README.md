@@ -1,8 +1,8 @@
-![Weasel](https://user-images.githubusercontent.com/4358785/39079306-a5a409b6-44e5-11e8-8589-b4acd63b636e.jpg)
+![Weasel](https://github.com/hackSugar/weasel/blob/master/presentation/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png?raw=true)
 
 # Weasel
 
-Weasel is a secure replacement for the [stock messaging app](https://github.com/android/platform_packages_apps_mms) included with Android, based on the QKSMS project by [Moez Bhatti](https://github.com/moezbhatti).
+Weasel is a secure replacement for the [stock messaging app](https://github.com/android/platform_packages_apps_mms) included with Android, developed by [hackSugar](https://github.com/hackSugar).
 
 ## Information
 
