@@ -72,6 +72,11 @@ import timber.log.Timber
 import java.util.*
 import javax.inject.Inject
 import javax.inject.Named
+import android.R.attr.phoneNumber
+import android.app.PendingIntent
+import android.content.Intent
+import android.telephony.SmsManager
+
 
 class ComposeViewModel @Inject constructor(
     @Named("query") private val query: String,
@@ -634,7 +639,7 @@ class ComposeViewModel @Inject constructor(
 
         // Send a message when the send button is clicked, and disable editing mode if it's enabled
         view.sendIntent
-                .filter { permissionManager.isDefaultSms().also { if (!it) view.requestDefaultSms() } }
+//                .filter { permissionManager.isDefaultSms().also { if (!it) view.requestDefaultSms() } }
                 .filter { permissionManager.hasSendSms().also { if (!it) view.requestSmsPermission() } }
                 .withLatestFrom(view.textChangedIntent) { _, body -> body }
                 .map { body -> body.toString() }

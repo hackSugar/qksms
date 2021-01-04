@@ -19,12 +19,25 @@
 package com.moez.QKSMS.interactor
 
 import android.content.Context
+import android.preference.PreferenceManager
+import android.util.Base64
 import com.moez.QKSMS.compat.TelephonyCompat
 import com.moez.QKSMS.extensions.mapNotNull
 import com.moez.QKSMS.model.Attachment
 import com.moez.QKSMS.repository.ConversationRepository
 import com.moez.QKSMS.repository.MessageRepository
 import io.reactivex.Flowable
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
+import java.io.ObjectInputStream
+import java.io.ObjectOutputStream
+import javax.crypto.Cipher
+import javax.crypto.Cipher.*
+import javax.crypto.KeyGenerator
+import javax.crypto.SecretKey
+import javax.crypto.spec.GCMParameterSpec
+import javax.crypto.spec.IvParameterSpec
+import javax.crypto.spec.SecretKeySpec
 import javax.inject.Inject
 
 class SendMessage @Inject constructor(
@@ -43,6 +56,59 @@ class SendMessage @Inject constructor(
         val delay: Int = 0
     )
 
+    fun encrypt(context:Context, strToEncrypt: String): ByteArray {
+        val plainText = strToEncrypt.toByteArray(Charsets.UTF_8)
+        val keygen = KeyGenerator.getInstance("AES")
+        keygen.init(256)
+        var key = keygen.generateKey()
+        saveSecretKey(context, key)
+        val cipher = getInstance("AES/GCM/NoPadding")
+        cipher.init(ENCRYPT_MODE, key)
+        val cipherText = cipher.doFinal(plainText)
+        val sb = StringBuilder()
+        sb.append(Base64.encodeToString(cipherText, Base64.DEFAULT));
+//        sb.append(Base64.encodeToString(cipher.iv, Base64.DEFAULT));
+        val jointCrypt = cipherText + cipher.iv;
+        print("ENCRYPTED: $sb");
+        return jointCrypt
+    }
+
+//    fun decrypt(context:Context, dataToDecrypt: ByteArray): ByteArray {
+//        val cipher = getInstance("AES/CBC/PKCS5PADDING")
+//        val ivSpec = IvParameterSpec()
+//        cipher.init(DECRYPT_MODE, getSavedSecretKey(context), ivSpec)
+//        val cipherText = cipher.doFinal(dataToDecrypt)
+//
+//        val sb = StringBuilder()
+//        for (b in cipherText) {
+//            sb.append(b.toChar())
+//        }
+//        Toast.makeText(context, "dbg decrypted = [" + sb.toString() + "]", Toast.LENGTH_LONG).show()
+//
+//        return cipherText
+//    }
+
+    private fun saveSecretKey(context:Context, secretKey: SecretKey) {
+        val baos = ByteArrayOutputStream()
+        val oos = ObjectOutputStream(baos)
+        oos.writeObject(secretKey)
+        val strToSave = String(android.util.Base64.encode(baos.toByteArray(), android.util.Base64.DEFAULT))
+        val sharedPref = PreferenceManager.getDefaultSharedPreferences(context)
+        val editor = sharedPref.edit()
+        editor.putString("secret_key", strToSave)
+        editor.apply()
+    }
+
+    fun getSavedSecretKey(context: Context): SecretKey {
+        val sharedPref = PreferenceManager.getDefaultSharedPreferences(context)
+        val strSecretKey = sharedPref.getString("secret_key", "")
+        val bytes = android.util.Base64.decode(strSecretKey, android.util.Base64.DEFAULT)
+        val ois = ObjectInputStream(ByteArrayInputStream(bytes))
+        val secretKey = ois.readObject() as SecretKey
+        return secretKey
+    }
+
+
     override fun buildObservable(params: Params): Flowable<*> = Flowable.just(Unit)
             .filter { params.addresses.isNotEmpty() }
             .doOnNext {
@@ -51,7 +117,9 @@ class SendMessage @Inject constructor(
                     0L -> TelephonyCompat.getOrCreateThreadId(context, params.addresses.toSet())
                     else -> params.threadId
                 }
-                messageRepo.sendMessage(params.subId, threadId, params.addresses, params.body, params.attachments,
+                val encd = encrypt(context, params.body);
+                println(Base64.encodeToString(encd, Base64.DEFAULT));
+                messageRepo.sendMessage(params.subId, threadId, params.addresses, Base64.encodeToString(encd, Base64.DEFAULT), params.attachments,
                         params.delay)
             }
             .mapNotNull {
