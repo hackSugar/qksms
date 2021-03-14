@@ -19,16 +19,22 @@
 package com.moez.QKSMS.util
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.os.Build
 import android.provider.Settings
 import com.f2prateek.rx.preferences2.Preference
 import com.f2prateek.rx.preferences2.RxSharedPreferences
 import com.moez.QKSMS.common.util.extensions.versionCode
+import io.reactivex.Observable
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
-class Preferences @Inject constructor(context: Context, private val rxPrefs: RxSharedPreferences) {
+class Preferences @Inject constructor(
+    context: Context,
+    private val rxPrefs: RxSharedPreferences,
+    private val sharedPrefs: SharedPreferences
+) {
 
     companion object {
         const val NIGHT_MODE_SYSTEM = 0
@@ -46,10 +52,12 @@ class Preferences @Inject constructor(context: Context, private val rxPrefs: RxS
         const val NOTIFICATION_PREVIEWS_NONE = 2
 
         const val NOTIFICATION_ACTION_NONE = 0
-        const val NOTIFICATION_ACTION_READ = 1
-        const val NOTIFICATION_ACTION_REPLY = 2
-        const val NOTIFICATION_ACTION_CALL = 3
-        const val NOTIFICATION_ACTION_DELETE = 4
+        const val NOTIFICATION_ACTION_ARCHIVE = 1
+        const val NOTIFICATION_ACTION_DELETE = 2
+        const val NOTIFICATION_ACTION_BLOCK = 3
+        const val NOTIFICATION_ACTION_CALL = 4
+        const val NOTIFICATION_ACTION_READ = 5
+        const val NOTIFICATION_ACTION_REPLY = 6
 
         const val SEND_DELAY_NONE = 0
         const val SEND_DELAY_SHORT = 1
@@ -59,9 +67,10 @@ class Preferences @Inject constructor(context: Context, private val rxPrefs: RxS
         const val SWIPE_ACTION_NONE = 0
         const val SWIPE_ACTION_ARCHIVE = 1
         const val SWIPE_ACTION_DELETE = 2
-        const val SWIPE_ACTION_CALL = 3
-        const val SWIPE_ACTION_READ = 4
-        const val SWIPE_ACTION_UNREAD = 5
+        const val SWIPE_ACTION_BLOCK = 3
+        const val SWIPE_ACTION_CALL = 4
+        const val SWIPE_ACTION_READ = 5
+        const val SWIPE_ACTION_UNREAD = 6
 
         const val BLOCKING_MANAGER_QKSMS = 0
         const val BLOCKING_MANAGER_CC = 1
@@ -69,6 +78,7 @@ class Preferences @Inject constructor(context: Context, private val rxPrefs: RxS
     }
 
     // Internal
+    val didSetReferrer = rxPrefs.getBoolean("didSetReferrer", false)
     val night = rxPrefs.getBoolean("night", false)
     val canUseSubId = rxPrefs.getBoolean("canUseSubId", true)
     val version = rxPrefs.getInteger("version", context.versionCode)
@@ -77,6 +87,7 @@ class Preferences @Inject constructor(context: Context, private val rxPrefs: RxS
     val sia = rxPrefs.getBoolean("sia", false)
 
     // User configurable
+    val sendAsGroup = rxPrefs.getBoolean("sendAsGroup", true)
     val nightMode = rxPrefs.getInteger("nightMode", when (Build.VERSION.SDK_INT >= 29) {
         true -> NIGHT_MODE_SYSTEM
         false -> NIGHT_MODE_OFF
@@ -84,6 +95,7 @@ class Preferences @Inject constructor(context: Context, private val rxPrefs: RxS
     val nightStart = rxPrefs.getString("nightStart", "18:00")
     val nightEnd = rxPrefs.getString("nightEnd", "6:00")
     val black = rxPrefs.getBoolean("black", false)
+    val autoColor = rxPrefs.getBoolean("autoColor", true)
     val systemFont = rxPrefs.getBoolean("systemFont", false)
     val textSize = rxPrefs.getInteger("textSize", TEXT_SIZE_NORMAL)
     val blockingManager = rxPrefs.getInteger("blockingManager", BLOCKING_MANAGER_QKSMS)
@@ -101,6 +113,8 @@ class Preferences @Inject constructor(context: Context, private val rxPrefs: RxS
     val signature = rxPrefs.getString("signature", "")
     val unicode = rxPrefs.getBoolean("unicode", false)
     val mobileOnly = rxPrefs.getBoolean("mobileOnly", false)
+    val autoDelete = rxPrefs.getInteger("autoDelete", 0)
+    val longAsMms = rxPrefs.getBoolean("longAsMms", false)
     val mmsSize = rxPrefs.getInteger("mmsSize", 300)
     val logging = rxPrefs.getBoolean("logging", false)
 
@@ -118,12 +132,29 @@ class Preferences @Inject constructor(context: Context, private val rxPrefs: RxS
         }
     }
 
-    fun theme(threadId: Long = 0): Preference<Int> {
-        val default = rxPrefs.getInteger("theme", 0xFF0097A7.toInt())
+    /**
+     * Returns a stream of preference keys for changing preferences
+     */
+    val keyChanges: Observable<String> = Observable.create<String> { emitter ->
+        // Making this a lambda would cause it to be GCd
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            emitter.onNext(key)
+        }
 
-        return when (threadId) {
-            0L -> default
-            else -> rxPrefs.getInteger("theme_$threadId", default.get())
+        emitter.setCancellable {
+            sharedPrefs.unregisterOnSharedPreferenceChangeListener(listener)
+        }
+
+        sharedPrefs.registerOnSharedPreferenceChangeListener(listener)
+    }.share()
+
+    fun theme(
+        recipientId: Long = 0,
+        default: Int = rxPrefs.getInteger("theme", 0xFF0097A7.toInt()).get()
+    ): Preference<Int> {
+        return when (recipientId) {
+            0L -> rxPrefs.getInteger("theme", 0xFF0097A7.toInt())
+            else -> rxPrefs.getInteger("theme_$recipientId", default)
         }
     }
 
@@ -142,6 +173,15 @@ class Preferences @Inject constructor(context: Context, private val rxPrefs: RxS
         return when (threadId) {
             0L -> default
             else -> rxPrefs.getInteger("notification_previews_$threadId", default.get())
+        }
+    }
+
+    fun wakeScreen(threadId: Long = 0): Preference<Boolean> {
+        val default = rxPrefs.getBoolean("wake", false)
+
+        return when (threadId) {
+            0L -> default
+            else -> rxPrefs.getBoolean("wake_$threadId", default.get())
         }
     }
 

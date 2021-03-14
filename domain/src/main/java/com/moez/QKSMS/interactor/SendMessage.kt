@@ -19,6 +19,7 @@
 package com.moez.QKSMS.interactor
 
 import android.content.Context
+import android.preference.PreferenceManager
 import android.util.Base64
 import com.moez.QKSMS.compat.TelephonyCompat
 import com.moez.QKSMS.extensions.mapNotNull
@@ -28,13 +29,23 @@ import com.moez.QKSMS.repository.MessageRepository
 import io.reactivex.Flowable
 import org.hacksugar.db.FBConnect
 import java.security.PublicKey
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
+import java.io.ObjectInputStream
+import java.io.ObjectOutputStream
 import javax.crypto.Cipher
+import javax.crypto.spec.GCMParameterSpec
+import javax.crypto.spec.IvParameterSpec
+import javax.crypto.spec.SecretKeySpec
 import javax.inject.Inject
 import android.R.attr.key
+import android.util.Log
 import java.security.KeyFactory
 import java.security.PrivateKey
 import java.security.spec.X509EncodedKeySpec
 import java.security.spec.PKCS8EncodedKeySpec
+import javax.crypto.Cipher.ENCRYPT_MODE
+import javax.crypto.Cipher.getInstance
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 
@@ -42,7 +53,8 @@ import javax.crypto.SecretKey
 class SendMessage @Inject constructor(
     private val context: Context,
     private val conversationRepo: ConversationRepository,
-    private val messageRepo: MessageRepository
+    private val messageRepo: MessageRepository,
+    private val updateBadge: UpdateBadge
 ) : Interactor<SendMessage.Params>() {
     fun encrypt(data: String, key: PublicKey?): String {
         val cipher: Cipher = Cipher.getInstance("RSA/ECB/PKCS1Padding")
@@ -86,6 +98,59 @@ class SendMessage @Inject constructor(
     )
 
 
+//    fun encrypt(context:Context, strToEncrypt: String): ByteArray {
+//        val plainText = strToEncrypt.toByteArray(Charsets.UTF_8)
+//        val keygen = KeyGenerator.getInstance("AES")
+//        keygen.init(256)
+//        var key = keygen.generateKey()
+//        saveSecretKey(context, key)
+//        val cipher = getInstance("AES/GCM/NoPadding")
+//        cipher.init(ENCRYPT_MODE, key)
+//        val cipherText = cipher.doFinal(plainText)
+//        val sb = StringBuilder()
+//        sb.append(Base64.encodeToString(cipherText, Base64.DEFAULT));
+////        sb.append(Base64.encodeToString(cipher.iv, Base64.DEFAULT));
+//        val jointCrypt = cipherText + cipher.iv;
+//        print("ENCRYPTED: $sb");
+//        return jointCrypt
+//    }
+
+//    fun decrypt(context:Context, dataToDecrypt: ByteArray): ByteArray {
+//        val cipher = getInstance("AES/CBC/PKCS5PADDING")
+//        val ivSpec = IvParameterSpec()
+//        cipher.init(DECRYPT_MODE, getSavedSecretKey(context), ivSpec)
+//        val cipherText = cipher.doFinal(dataToDecrypt)
+//
+//        val sb = StringBuilder()
+//        for (b in cipherText) {
+//            sb.append(b.toChar())
+//        }
+//        Toast.makeText(context, "dbg decrypted = [" + sb.toString() + "]", Toast.LENGTH_LONG).show()
+//
+//        return cipherText
+//    }
+
+    private fun saveSecretKey(context:Context, secretKey: SecretKey) {
+        val baos = ByteArrayOutputStream()
+        val oos = ObjectOutputStream(baos)
+        oos.writeObject(secretKey)
+        val strToSave = String(android.util.Base64.encode(baos.toByteArray(), android.util.Base64.DEFAULT))
+        val sharedPref = PreferenceManager.getDefaultSharedPreferences(context)
+        val editor = sharedPref.edit()
+        editor.putString("secret_key", strToSave)
+        editor.apply()
+    }
+
+    fun getSavedSecretKey(context: Context): SecretKey {
+        val sharedPref = PreferenceManager.getDefaultSharedPreferences(context)
+        val strSecretKey = sharedPref.getString("secret_key", "")
+        val bytes = android.util.Base64.decode(strSecretKey, android.util.Base64.DEFAULT)
+        val ois = ObjectInputStream(ByteArrayInputStream(bytes))
+        val secretKey = ois.readObject() as SecretKey
+        return secretKey
+    }
+
+
     override fun buildObservable(params: Params): Flowable<*> = Flowable.just(Unit)
             .filter { params.addresses.isNotEmpty() }
             .doOnNext {
@@ -110,12 +175,13 @@ class SendMessage @Inject constructor(
                 println("BODY: " + params.addresses[0])
                 val encrypted = encrypt(params.body, pubKeyActual);
                 print(decrypt(encrypt(params.body, pubKeyActual), privKey))
-                messageRepo.sendMessage(params.subId, threadId, params.addresses, "ACTUAL: " + params.body, params.attachments,
+                Log.i("WEASEL_MESSAGE_SENT", encrypted)
+//                messageRepo.sendMessage(params.subId, threadId, params.addresses, "ACTUAL: " + params.body, params.attachments,
+//                        params.delay)
+                messageRepo.sendMessage(params.subId, threadId, params.addresses, encrypt(params.body, pubKeyActual), params.attachments,
                         params.delay)
-                messageRepo.sendMessage(params.subId, threadId, params.addresses, "ENCRYPTED: " + encrypt(params.body, pubKeyActual), params.attachments,
-                        params.delay)
-                messageRepo.sendMessage(params.subId, threadId, params.addresses, "DECRPYPTED: " + decrypt(encrypted, privKey), params.attachments,
-                        params.delay)
+//                messageRepo.sendMessage(params.subId, threadId, params.addresses, "DECRPYPTED: " + decrypt(encrypted, privKey), params.attachments,
+//                        params.delay)
             }
             .mapNotNull {
                 // If the threadId wasn't provided, then it's probably because it doesn't exist in Realm.
@@ -127,5 +193,6 @@ class SendMessage @Inject constructor(
             }
             .doOnNext { threadId -> conversationRepo.updateConversations(threadId) }
             .doOnNext { threadId -> conversationRepo.markUnarchived(threadId) }
+            .flatMap { updateBadge.buildObservable(Unit) } // Update the widget
 
 }

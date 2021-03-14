@@ -33,6 +33,7 @@ import com.moez.QKSMS.interactor.MarkUnarchived
 import com.moez.QKSMS.interactor.MarkUnpinned
 import com.moez.QKSMS.interactor.MarkUnread
 import com.moez.QKSMS.interactor.MigratePreferences
+import com.moez.QKSMS.interactor.SyncContacts
 import com.moez.QKSMS.interactor.SyncMessages
 import com.moez.QKSMS.listener.ContactAddedListener
 import com.moez.QKSMS.manager.ChangelogManager
@@ -55,10 +56,10 @@ import javax.inject.Inject
 
 class MainViewModel @Inject constructor(
     billingManager: BillingManager,
+    contactAddedListener: ContactAddedListener,
     markAllSeen: MarkAllSeen,
     migratePreferences: MigratePreferences,
     syncRepository: SyncRepository,
-    private val contactAddedListener: ContactAddedListener,
     private val changelogManager: ChangelogManager,
     private val conversationRepo: ConversationRepository,
     private val deleteConversations: DeleteConversations,
@@ -72,6 +73,7 @@ class MainViewModel @Inject constructor(
     private val permissionManager: PermissionManager,
     private val prefs: Preferences,
     private val ratingManager: RatingManager,
+    private val syncContacts: SyncContacts,
     private val syncMessages: SyncMessages
 ) : QkViewModel<MainView, MainState>(MainState(page = Inbox(data = conversationRepo.getConversations()))) {
 
@@ -81,6 +83,7 @@ class MainViewModel @Inject constructor(
         disposables += markArchived
         disposables += markUnarchived
         disposables += migratePreferences
+        disposables += syncContacts
         disposables += syncMessages
 
         // Show the syncing UI
@@ -109,6 +112,14 @@ class MainViewModel @Inject constructor(
             syncMessages.execute(Unit)
         }
 
+        // Sync contacts when we detect a change
+        if (permissionManager.hasContacts()) {
+            disposables += contactAddedListener.listen()
+                    .debounce(1, TimeUnit.SECONDS)
+                    .subscribeOn(Schedulers.io())
+                    .subscribe { syncContacts.execute(Unit) }
+        }
+
         ratingManager.addSession()
         markAllSeen.execute(Unit)
     }
@@ -122,6 +133,7 @@ class MainViewModel @Inject constructor(
         }
 
         val permissions = view.activityResumedIntent
+                .filter { resumed -> resumed }
                 .observeOn(Schedulers.io())
                 .map { Triple(permissionManager.isDefaultSms(), permissionManager.hasReadSms(), permissionManager.hasContacts()) }
                 .distinctUntilChanged()
@@ -148,6 +160,7 @@ class MainViewModel @Inject constructor(
                 .autoDisposable(view.scope())
                 .subscribe { intent ->
                     when (intent.getStringExtra("screen")) {
+                        "compose" -> navigator.showConversation(intent.getLongExtra("threadId", 0))
                         "blocking" -> navigator.showBlockedConversations()
                     }
                 }
@@ -182,6 +195,8 @@ class MainViewModel @Inject constructor(
                     query
                 }
                 .filter { query -> query.length >= 2 }
+                .map { query -> query.trim() }
+                .distinctUntilChanged()
                 .doOnNext {
                     newState {
                         val page = (page as? Searching) ?: Searching()
@@ -192,6 +207,20 @@ class MainViewModel @Inject constructor(
                 .map(conversationRepo::searchConversations)
                 .autoDisposable(view.scope())
                 .subscribe { data -> newState { copy(page = Searching(loading = false, data = data)) } }
+
+        view.activityResumedIntent
+                .filter { resumed -> !resumed }
+                .switchMap {
+                    // Take until the activity is resumed
+                    prefs.keyChanges
+                            .filter { key -> key.contains("theme") }
+                            .map { true }
+                            .mergeWith(prefs.autoColor.asObservable().skip(1))
+                            .doOnNext { view.themeChanged() }
+                            .takeUntil(view.activityResumedIntent.filter { resumed -> resumed })
+                }
+                .autoDisposable(view.scope())
+                .subscribe()
 
         view.composeIntent
                 .autoDisposable(view.scope())
@@ -287,7 +316,6 @@ class MainViewModel @Inject constructor(
                 .map { conversation -> conversation.recipients }
                 .mapNotNull { recipients -> recipients[0]?.address?.takeIf { recipients.size == 1 } }
                 .doOnNext(navigator::addContact)
-                .flatMap(contactAddedListener::listen)
                 .autoDisposable(view.scope())
                 .subscribe()
 
@@ -365,7 +393,7 @@ class MainViewModel @Inject constructor(
                             ?.recipients?.first()
                             ?.takeIf { recipient -> recipient.contact == null } != null
                     val pin = conversations.sumBy { if (it.pinned) -1 else 1 } >= 0
-                    val read = conversations.sumBy { if (it.read) -1 else 1 } >= 0
+                    val read = conversations.sumBy { if (!it.unread) -1 else 1 } >= 0
                     val selected = selection.size
 
                     when (state.page) {
@@ -398,6 +426,7 @@ class MainViewModel @Inject constructor(
                     when (action) {
                         Preferences.SWIPE_ACTION_ARCHIVE -> markArchived.execute(listOf(threadId)) { view.showArchivedSnackbar() }
                         Preferences.SWIPE_ACTION_DELETE -> view.showDeleteDialog(listOf(threadId))
+                        Preferences.SWIPE_ACTION_BLOCK -> view.showBlockingDialog(listOf(threadId), true)
                         Preferences.SWIPE_ACTION_CALL -> conversationRepo.getConversation(threadId)?.recipients?.firstOrNull()?.address?.let(navigator::makePhoneCall)
                         Preferences.SWIPE_ACTION_READ -> markRead.execute(listOf(threadId))
                         Preferences.SWIPE_ACTION_UNREAD -> markUnread.execute(listOf(threadId))

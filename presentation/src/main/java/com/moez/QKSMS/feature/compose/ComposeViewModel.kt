@@ -20,9 +20,10 @@ package com.moez.QKSMS.feature.compose
 
 import android.content.Context
 import android.net.Uri
+import android.os.Vibrator
 import android.provider.ContactsContract
 import android.telephony.SmsMessage
-import android.view.inputmethod.EditorInfo
+import androidx.core.content.getSystemService
 import com.moez.QKSMS.R
 import com.moez.QKSMS.common.Navigator
 import com.moez.QKSMS.common.base.QkViewModel
@@ -36,11 +37,8 @@ import com.moez.QKSMS.extensions.asObservable
 import com.moez.QKSMS.extensions.isImage
 import com.moez.QKSMS.extensions.isVideo
 import com.moez.QKSMS.extensions.mapNotNull
-import com.moez.QKSMS.extensions.removeAccents
-import com.moez.QKSMS.filter.ContactFilter
 import com.moez.QKSMS.interactor.AddScheduledMessage
 import com.moez.QKSMS.interactor.CancelDelayedMessage
-import com.moez.QKSMS.interactor.ContactSync
 import com.moez.QKSMS.interactor.DeleteMessages
 import com.moez.QKSMS.interactor.MarkRead
 import com.moez.QKSMS.interactor.RetrySending
@@ -49,10 +47,9 @@ import com.moez.QKSMS.manager.ActiveConversationManager
 import com.moez.QKSMS.manager.PermissionManager
 import com.moez.QKSMS.model.Attachment
 import com.moez.QKSMS.model.Attachments
-import com.moez.QKSMS.model.Contact
 import com.moez.QKSMS.model.Conversation
 import com.moez.QKSMS.model.Message
-import com.moez.QKSMS.model.PhoneNumber
+import com.moez.QKSMS.model.Recipient
 import com.moez.QKSMS.repository.ContactRepository
 import com.moez.QKSMS.repository.ConversationRepository
 import com.moez.QKSMS.repository.MessageRepository
@@ -71,25 +68,28 @@ import io.reactivex.schedulers.Schedulers
 import io.reactivex.subjects.BehaviorSubject
 import io.reactivex.subjects.PublishSubject
 import io.reactivex.subjects.Subject
-import io.realm.RealmList
 import timber.log.Timber
 import java.util.*
 import javax.inject.Inject
 import javax.inject.Named
+import android.R.attr.phoneNumber
+import android.app.PendingIntent
+import android.content.Intent
+import android.telephony.SmsManager
+
 
 class ComposeViewModel @Inject constructor(
     @Named("query") private val query: String,
     @Named("threadId") private val threadId: Long,
-    @Named("address") private val address: String,
+    @Named("addresses") private val addresses: List<String>,
     @Named("text") private val sharedText: String,
     @Named("attachments") private val sharedAttachments: Attachments,
+    private val contactRepo: ContactRepository,
     private val context: Context,
     private val activeConversationManager: ActiveConversationManager,
     private val addScheduledMessage: AddScheduledMessage,
     private val billingManager: BillingManager,
     private val cancelMessage: CancelDelayedMessage,
-    private val contactFilter: ContactFilter,
-    private val contactsRepo: ContactRepository,
     private val conversationRepo: ConversationRepository,
     private val deleteMessages: DeleteMessages,
     private val markRead: MarkRead,
@@ -101,22 +101,22 @@ class ComposeViewModel @Inject constructor(
     private val prefs: Preferences,
     private val retrySending: RetrySending,
     private val sendMessage: SendMessage,
-    private val subscriptionManager: SubscriptionManagerCompat,
-    private val syncContacts: ContactSync
+    private val subscriptionManager: SubscriptionManagerCompat
 ) : QkViewModel<ComposeView, ComposeState>(ComposeState(
-        editingMode = threadId == 0L && address.isBlank(),
-        selectedConversation = threadId,
+        editingMode = threadId == 0L && addresses.isEmpty(),
+        threadId = threadId,
         query = query)
 ) {
 
     private val attachments: Subject<List<Attachment>> = BehaviorSubject.createDefault(sharedAttachments)
-    private val contacts: Observable<List<Contact>> by lazy { contactsRepo.getUnmanagedContacts().toObservable() }
-    private val contactsReducer: Subject<(List<Contact>) -> List<Contact>> = PublishSubject.create()
-    private val selectedContacts: Subject<List<Contact>> = BehaviorSubject.createDefault(listOf())
-    private val searchResults: Subject<List<Message>> = BehaviorSubject.create()
-    private val searchSelection: Subject<Long> = BehaviorSubject.createDefault(-1)
+    private val chipsReducer: Subject<(List<Recipient>) -> List<Recipient>> = PublishSubject.create()
     private val conversation: Subject<Conversation> = BehaviorSubject.create()
     private val messages: Subject<List<Message>> = BehaviorSubject.create()
+    private val selectedChips: Subject<List<Recipient>> = BehaviorSubject.createDefault(listOf())
+    private val searchResults: Subject<List<Message>> = BehaviorSubject.create()
+    private val searchSelection: Subject<Long> = BehaviorSubject.createDefault(-1)
+
+    private var shouldShowContacts = threadId == 0L && addresses.isEmpty()
 
     init {
         val initialConversation = threadId.takeIf { it != 0L }
@@ -124,9 +124,9 @@ class ComposeViewModel @Inject constructor(
                 ?.asObservable()
                 ?: Observable.empty()
 
-        val selectedConversation = selectedContacts
+        val selectedConversation = selectedChips
                 .skipWhile { it.isEmpty() }
-                .map { contacts -> contacts.map { it.numbers.firstOrNull()?.address ?: "" } }
+                .map { chips -> chips.map { it.address } }
                 .distinctUntilChanged()
                 .doOnNext { newState { copy(loading = true) } }
                 .observeOn(Schedulers.io())
@@ -167,24 +167,24 @@ class ComposeViewModel @Inject constructor(
                 .filter { conversation -> conversation.isValid }
                 .subscribe(conversation::onNext)
 
-        if (address.isNotBlank()) {
-            selectedContacts.onNext(listOf(Contact(numbers = RealmList(PhoneNumber(address)))))
+        if (addresses.isNotEmpty()) {
+            selectedChips.onNext(addresses.map { address -> Recipient(address = address) })
         }
 
-        disposables += contactsReducer
-                .scan(listOf<Contact>()) { previousState, reducer -> reducer(previousState) }
-                .doOnNext { contacts -> newState { copy(selectedContacts = contacts) } }
+        disposables += chipsReducer
+                .scan(listOf<Recipient>()) { previousState, reducer -> reducer(previousState) }
+                .doOnNext { chips -> newState { copy(selectedChips = chips) } }
                 .skipUntil(state.filter { state -> state.editingMode })
                 .takeUntil(state.filter { state -> !state.editingMode })
-                .subscribe(selectedContacts::onNext)
+                .subscribe(selectedChips::onNext)
 
-        // When the conversation changes, mark read, and update the threadId and the messages for the adapter
+        // When the conversation changes, mark read, and update the recipientId and the messages for the adapter
         disposables += conversation
                 .distinctUntilChanged { conversation -> conversation.id }
                 .observeOn(AndroidSchedulers.mainThread())
                 .map { conversation ->
                     val messages = messageRepo.getMessages(conversation.id)
-                    newState { copy(selectedConversation = conversation.id, messages = Pair(conversation, messages)) }
+                    newState { copy(threadId = conversation.id, messages = Pair(conversation, messages)) }
                     messages
                 }
                 .switchMap { messages -> messages.asObservable() }
@@ -194,6 +194,10 @@ class ComposeViewModel @Inject constructor(
                 .map { conversation -> conversation.getTitle() }
                 .distinctUntilChanged()
                 .subscribe { title -> newState { copy(conversationtitle = title) } }
+
+        disposables += prefs.sendAsGroup.asObservable()
+                .distinctUntilChanged()
+                .subscribe { enabled -> newState { copy(sendAsGroup = enabled) } }
 
         disposables += attachments
                 .subscribe { attachments -> newState { copy(attachments = attachments) } }
@@ -226,90 +230,68 @@ class ComposeViewModel @Inject constructor(
             val sub = if (subs.size > 1) subs.firstOrNull { it.subscriptionId == subId } ?: subs[0] else null
             newState { copy(subscription = sub) }
         }.subscribe()
-
-        if (threadId == 0L) {
-            syncContacts.execute(Unit)
-        }
     }
 
     override fun bindView(view: ComposeView) {
         super.bindView(view)
 
-        // Set the contact suggestions list to visible at all times when in editing mode and there are no contacts
-        // selected yet, and also visible while in editing mode and there is text entered in the query field
-        Observables
-                .combineLatest(view.queryChangedIntent, selectedContacts) { query, selectedContacts ->
-                    selectedContacts.isEmpty() || query.isNotEmpty()
-                }
-                .skipUntil(state.filter { state -> state.editingMode })
-                .takeUntil(state.filter { state -> !state.editingMode })
-                .distinctUntilChanged()
-                .autoDisposable(view.scope())
-                .subscribe { contactsVisible -> newState { copy(contactsVisible = contactsVisible && editingMode) } }
+        val sharing = sharedText.isNotEmpty() || sharedAttachments.isNotEmpty()
+        if (shouldShowContacts) {
+            shouldShowContacts = false
+            view.showContacts(sharing, selectedChips.blockingFirst())
+        }
 
-        // Update the list of contact suggestions based on the query input, while also filtering out any contacts
-        // that have already been selected
-        Observables
-                .combineLatest(view.queryChangedIntent, contacts, selectedContacts) { query, contacts,
-                                                                                      selectedContacts ->
-
-                    // Strip the accents from the query. This can be an expensive operation, so
-                    // cache the result instead of doing it for each contact
-                    val normalizedQuery = query.removeAccents()
-
-                    var filteredContacts = contacts
-                            .filterNot { contact -> selectedContacts.contains(contact) }
-                            .filter { contact -> contactFilter.filter(contact, normalizedQuery) }
-
-                    // If the entry is a valid destination, allow it as a recipient
-                    if (phoneNumberUtils.isPossibleNumber(query.toString())) {
-                        val newAddress = phoneNumberUtils.formatNumber(query)
-                        val newContact = Contact(numbers = RealmList(PhoneNumber(address = newAddress)))
-                        filteredContacts = listOf(newContact) + filteredContacts
+        view.chipsSelectedIntent
+                .withLatestFrom(selectedChips) { hashmap, chips ->
+                    // If there's no contacts already selected, and the user cancelled the contact
+                    // selection, close the activity
+                    if (hashmap.isEmpty() && chips.isEmpty()) {
+                        newState { copy(hasError = true) }
                     }
-
-                    filteredContacts
-                }
-                .skipUntil(state.filter { state -> state.editingMode })
-                .takeUntil(state.filter { state -> !state.editingMode })
-                .subscribeOn(Schedulers.computation())
-                .autoDisposable(view.scope())
-                .subscribe { contacts -> newState { copy(contacts = contacts) } }
-
-        // Backspaces should delete the most recent contact if there's no text input
-        // Close the activity if user presses back
-        view.queryBackspaceIntent
-                .withLatestFrom(selectedContacts, view.queryChangedIntent) { event, contacts, query ->
-                    if (contacts.isNotEmpty() && query.isEmpty()) {
-                        contactsReducer.onNext { it.dropLast(1) }
+                    // Filter out any numbers that are already selected
+                    hashmap.filter { (address) ->
+                        chips.none { recipient -> phoneNumberUtils.compare(address, recipient.address) }
                     }
+                }
+                .filter { hashmap -> hashmap.isNotEmpty() }
+                .map { hashmap ->
+                    hashmap.map { (address, lookupKey) ->
+                        conversationRepo.getRecipients()
+                                .asSequence()
+                                .filter { recipient -> recipient.contact?.lookupKey == lookupKey }
+                                .firstOrNull { recipient -> phoneNumberUtils.compare(recipient.address, address) }
+                                ?: Recipient(
+                                        address = address,
+                                        contact = lookupKey?.let(contactRepo::getUnmanagedContact))
+                    }
+                }
+                .autoDisposable(view.scope())
+                .subscribe { chips ->
+                    chipsReducer.onNext { list -> list + chips }
+                    view.showKeyboard()
+                }
+
+        // Set the contact suggestions list to visible when the add button is pressed
+        view.optionsItemIntent
+                .filter { it == R.id.add }
+                .withLatestFrom(selectedChips) { _, chips ->
+                    view.showContacts(sharing, chips)
                 }
                 .autoDisposable(view.scope())
                 .subscribe()
-
-        // Enter the first contact suggestion if the enter button is pressed
-        view.queryEditorActionIntent
-                .filter { actionId -> actionId == EditorInfo.IME_ACTION_DONE }
-                .withLatestFrom(state) { _, state -> state }
-                .autoDisposable(view.scope())
-                .subscribe { state ->
-                    state.contacts.firstOrNull()?.let { contact ->
-                        contactsReducer.onNext { contacts -> contacts + contact }
-                    }
-                }
 
         // Update the list of selected contacts when a new contact is selected or an existing one is deselected
-        Observable.merge(
-                view.chipDeletedIntent.doOnNext { contact ->
-                    contactsReducer.onNext { contacts -> contacts.filterNot { it == contact } }
-                },
-                view.chipSelectedIntent.doOnNext { contact ->
-                    contactsReducer.onNext { contacts -> contacts.toMutableList().apply { add(contact) } }
-                })
-                .skipUntil(state.filter { state -> state.editingMode })
-                .takeUntil(state.filter { state -> !state.editingMode })
+        view.chipDeletedIntent
                 .autoDisposable(view.scope())
-                .subscribe()
+                .subscribe { contact ->
+                    chipsReducer.onNext { contacts ->
+                        val result = contacts.filterNot { it == contact }
+                        if (result.isEmpty()) {
+                            view.showContacts(sharing, result)
+                        }
+                        result
+                    }
+                }
 
         // When the menu is loaded, trigger a new state so that the menu options can be rendered correctly
         view.menuReadyIntent
@@ -335,11 +317,20 @@ class ComposeViewModel @Inject constructor(
         // Copy the message contents
         view.optionsItemIntent
                 .filter { it == R.id.copy }
-                .withLatestFrom(view.messagesSelectedIntent) { _, messages ->
-                    messages?.firstOrNull()?.let { messageRepo.getMessage(it) }?.let { message ->
-                        ClipboardUtils.copy(context, message.getText())
-                        context.makeToast(R.string.toast_copied)
+                .withLatestFrom(view.messagesSelectedIntent) { _, messageIds ->
+                    val messages = messageIds.mapNotNull(messageRepo::getMessage).sortedBy { it.date }
+                    val text = when (messages.size) {
+                        1 -> messages.first().getText()
+                        else -> messages.foldIndexed("") { index, acc, message ->
+                            when {
+                                index == 0 -> message.getText()
+                                messages[index - 1].compareSender(message) -> "$acc\n${message.getText()}"
+                                else -> "$acc\n\n${message.getText()}"
+                            }
+                        }
                     }
+
+                    ClipboardUtils.copy(context, text)
                 }
                 .autoDisposable(view.scope())
                 .subscribe { view.clearSelection() }
@@ -409,7 +400,7 @@ class ComposeViewModel @Inject constructor(
         // Toggle the group sending mode
         view.sendAsGroupIntent
                 .autoDisposable(view.scope())
-                .subscribe { newState { copy(sendAsGroup = !sendAsGroup) } }
+                .subscribe { prefs.sendAsGroup.set(!prefs.sendAsGroup.get()) }
 
         // Scroll to search position
         searchSelection
@@ -418,11 +409,18 @@ class ComposeViewModel @Inject constructor(
                 .autoDisposable(view.scope())
                 .subscribe(view::scrollToMessage)
 
+        // Theme changes
+        prefs.keyChanges
+                .filter { key -> key.contains("theme") }
+                .doOnNext { view.themeChanged() }
+                .autoDisposable(view.scope())
+                .subscribe()
+
         // Retry sending
         view.messageClickIntent
                 .mapNotNull(messageRepo::getMessage)
                 .filter { message -> message.isFailedMessage() }
-                .doOnNext { message -> retrySending.execute(message) }
+                .doOnNext { message -> retrySending.execute(message.id) }
                 .autoDisposable(view.scope())
                 .subscribe()
 
@@ -457,24 +455,27 @@ class ComposeViewModel @Inject constructor(
                 .mapNotNull(messageRepo::getMessage)
                 .doOnNext { message -> view.setDraft(message.getText()) }
                 .autoDisposable(view.scope())
-                .subscribe { message -> cancelMessage.execute(message.id) }
-
-        // Set the current conversation
-        Observables.combineLatest(
-                view.activityVisibleIntent.distinctUntilChanged(),
-                conversation.mapNotNull { conversation ->
-                    conversation.takeIf { it.isValid }?.id
-                }.distinctUntilChanged())
-        { visible, threadId ->
-            when (visible) {
-                true -> {
-                    activeConversationManager.setActiveConversation(threadId)
-                    markRead.execute(listOf(threadId))
+                .subscribe { message ->
+                    cancelMessage.execute(CancelDelayedMessage.Params(message.id, message.threadId))
                 }
 
-                false -> activeConversationManager.setActiveConversation(null)
-            }
-        }
+        // Set the current conversation
+        Observables
+                .combineLatest(
+                        view.activityVisibleIntent.distinctUntilChanged(),
+                        conversation.mapNotNull { conversation ->
+                            conversation.takeIf { it.isValid }?.id
+                        }.distinctUntilChanged())
+                { visible, threadId ->
+                    when (visible) {
+                        true -> {
+                            activeConversationManager.setActiveConversation(threadId)
+                            markRead.execute(listOf(threadId))
+                        }
+
+                        false -> activeConversationManager.setActiveConversation(null)
+                    }
+                }
                 .autoDisposable(view.scope())
                 .subscribe()
 
@@ -528,7 +529,7 @@ class ComposeViewModel @Inject constructor(
                 view.attachmentSelectedIntent.map { uri -> Attachment.Image(uri) },
                 view.inputContentIntent.map { inputContent -> Attachment.Image(inputContent = inputContent) })
                 .withLatestFrom(attachments) { attachment, attachments -> attachments + attachment }
-                .doOnNext { attachments.onNext(it) }
+                .doOnNext(attachments::onNext)
                 .autoDisposable(view.scope())
                 .subscribe { newState { copy(attaching = false) } }
 
@@ -624,6 +625,13 @@ class ComposeViewModel @Inject constructor(
                         subIndex < subs.size - 1 -> subs[subIndex + 1]
                         else -> subs[0]
                     }
+
+                    if (subscription != null) {
+                        context.getSystemService<Vibrator>()?.vibrate(40)
+                        context.makeToast(context.getString(R.string.compose_sim_changed_toast,
+                                subscription.simSlotIndex + 1, subscription.displayName))
+                    }
+
                     newState { copy(subscription = subscription) }
                 }
                 .autoDisposable(view.scope())
@@ -631,16 +639,16 @@ class ComposeViewModel @Inject constructor(
 
         // Send a message when the send button is clicked, and disable editing mode if it's enabled
         view.sendIntent
-                .filter { permissionManager.isDefaultSms().also { if (!it) view.requestDefaultSms() } }
+//                .filter { permissionManager.isDefaultSms().also { if (!it) view.requestDefaultSms() } }
                 .filter { permissionManager.hasSendSms().also { if (!it) view.requestSmsPermission() } }
                 .withLatestFrom(view.textChangedIntent) { _, body -> body }
                 .map { body -> body.toString() }
-                .withLatestFrom(state, attachments, conversation, selectedContacts) { body, state, attachments,
-                                                                                      conversation, contacts ->
+                .withLatestFrom(state, attachments, conversation, selectedChips) { body, state, attachments,
+                                                                                   conversation, chips ->
                     val subId = state.subscription?.subscriptionId ?: -1
                     val addresses = when (conversation.recipients.isNotEmpty()) {
                         true -> conversation.recipients.map { it.address }
-                        false -> contacts.mapNotNull { it.numbers.firstOrNull()?.address }
+                        false -> chips.map { chip -> chip.address }
                     }
                     val delay = when (prefs.sendDelay.get()) {
                         Preferences.SEND_DELAY_SHORT -> 3000
@@ -648,6 +656,7 @@ class ComposeViewModel @Inject constructor(
                         Preferences.SEND_DELAY_LONG -> 10000
                         else -> 0
                     }
+                    val sendAsGroup = !state.editingMode || state.sendAsGroup
 
                     when {
                         // Scheduling a message
@@ -658,13 +667,13 @@ class ComposeViewModel @Inject constructor(
                                     .map { it.getUri() }
                                     .map { it.toString() }
                             val params = AddScheduledMessage
-                                    .Params(state.scheduled, subId, addresses, state.sendAsGroup, body, uris)
+                                    .Params(state.scheduled, subId, addresses, sendAsGroup, body, uris)
                             addScheduledMessage.execute(params)
                             context.makeToast(R.string.compose_scheduled_toast)
                         }
 
                         // Sending a group message
-                        state.sendAsGroup -> {
+                        sendAsGroup -> {
                             sendMessage.execute(SendMessage
                                     .Params(subId, conversation.id, addresses, body, attachments, delay))
                         }
@@ -699,7 +708,7 @@ class ComposeViewModel @Inject constructor(
                     this.attachments.onNext(ArrayList())
 
                     if (state.editingMode) {
-                        newState { copy(editingMode = false, sendAsGroup = true, hasError = !state.sendAsGroup) }
+                        newState { copy(editingMode = false, hasError = !sendAsGroup) }
                     }
                 }
                 .autoDisposable(view.scope())

@@ -32,6 +32,8 @@ interface MessageRepository {
 
     fun getMessageForPart(id: Long): Message?
 
+    fun getLastIncomingMessage(threadId: Long): RealmResults<Message>
+
     fun getUnreadCount(): Long
 
     fun getPart(id: Long): MmsPart?
@@ -74,6 +76,8 @@ interface MessageRepository {
      */
     fun sendSms(message: Message)
 
+    fun resendMms(message: Message)
+
     /**
      * Attempts to cancel sending the message with the given id
      */
@@ -97,5 +101,15 @@ interface MessageRepository {
     fun markDeliveryFailed(id: Long, resultCode: Int)
 
     fun deleteMessages(vararg messageIds: Long)
+
+    /**
+     * Returns the number of messages older than [maxAgeDays] per conversation
+     */
+    fun getOldMessageCounts(maxAgeDays: Int): Map<Long, Int>
+
+    /**
+     * Deletes all messages older than [maxAgeDays]
+     */
+    fun deleteOldMessages(maxAgeDays: Int)
 
 }

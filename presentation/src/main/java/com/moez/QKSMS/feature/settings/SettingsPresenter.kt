@@ -26,14 +26,20 @@ import com.moez.QKSMS.common.util.BillingManager
 import com.moez.QKSMS.common.util.Colors
 import com.moez.QKSMS.common.util.DateFormatter
 import com.moez.QKSMS.common.util.extensions.makeToast
+import com.moez.QKSMS.interactor.DeleteOldMessages
 import com.moez.QKSMS.interactor.SyncMessages
+import com.moez.QKSMS.manager.AnalyticsManager
+import com.moez.QKSMS.repository.MessageRepository
 import com.moez.QKSMS.repository.SyncRepository
+import com.moez.QKSMS.service.AutoDeleteService
 import com.moez.QKSMS.util.NightModeManager
 import com.moez.QKSMS.util.Preferences
 import com.uber.autodispose.android.lifecycle.scope
 import com.uber.autodispose.autoDisposable
 import io.reactivex.rxkotlin.plusAssign
 import io.reactivex.rxkotlin.withLatestFrom
+import io.reactivex.schedulers.Schedulers
+import kotlinx.coroutines.runBlocking
 import timber.log.Timber
 import java.util.*
 import java.util.concurrent.TimeUnit
@@ -42,9 +48,12 @@ import javax.inject.Inject
 class SettingsPresenter @Inject constructor(
     colors: Colors,
     syncRepo: SyncRepository,
+    private val analytics: AnalyticsManager,
     private val context: Context,
     private val billingManager: BillingManager,
     private val dateFormatter: DateFormatter,
+    private val deleteOldMessages: DeleteOldMessages,
+    private val messageRepo: MessageRepository,
     private val navigator: Navigator,
     private val nightModeManager: NightModeManager,
     private val prefs: Preferences,
@@ -100,6 +109,9 @@ class SettingsPresenter @Inject constructor(
                     newState { copy(textSizeSummary = textSizeLabels[textSize], textSizeId = textSize) }
                 }
 
+        disposables += prefs.autoColor.asObservable()
+                .subscribe { autoColor -> newState { copy(autoColor = autoColor) } }
+
         disposables += prefs.systemFont.asObservable()
                 .subscribe { enabled -> newState { copy(systemFontEnabled = enabled) } }
 
@@ -108,6 +120,12 @@ class SettingsPresenter @Inject constructor(
 
         disposables += prefs.mobileOnly.asObservable()
                 .subscribe { enabled -> newState { copy(mobileOnly = enabled) } }
+
+        disposables += prefs.autoDelete.asObservable()
+                .subscribe { autoDelete -> newState { copy(autoDelete = autoDelete) } }
+
+        disposables += prefs.longAsMms.asObservable()
+                .subscribe { enabled -> newState { copy(longAsMms = enabled) } }
 
         val mmsSizeLabels = context.resources.getStringArray(R.array.mms_sizes)
         val mmsSizeIds = context.resources.getIntArray(R.array.mms_sizes_ids)
@@ -164,11 +182,20 @@ class SettingsPresenter @Inject constructor(
 
                         R.id.textSize -> view.showTextSizePicker()
 
+                        R.id.autoColor -> {
+                            analytics.setUserProperty("Preference: Auto Color", !prefs.autoColor.get())
+                            prefs.autoColor.set(!prefs.autoColor.get())
+                        }
+
                         R.id.systemFont -> prefs.systemFont.set(!prefs.systemFont.get())
 
                         R.id.unicode -> prefs.unicode.set(!prefs.unicode.get())
 
                         R.id.mobileOnly -> prefs.mobileOnly.set(!prefs.mobileOnly.get())
+
+                        R.id.autoDelete -> view.showAutoDeleteDialog(prefs.autoDelete.get())
+
+                        R.id.longAsMms -> prefs.longAsMms.set(!prefs.longAsMms.get())
 
                         R.id.mmsSize -> view.showMmsSizePicker()
 
@@ -227,8 +254,35 @@ class SettingsPresenter @Inject constructor(
                 .autoDisposable(view.scope())
                 .subscribe()
 
-        view.signatureSet()
+        view.signatureChanged()
                 .doOnNext(prefs.signature::set)
+                .autoDisposable(view.scope())
+                .subscribe()
+
+        view.autoDeleteChanged()
+                .observeOn(Schedulers.io())
+                .filter { maxAge ->
+                    if (maxAge == 0) {
+                        return@filter true
+                    }
+
+                    val counts = messageRepo.getOldMessageCounts(maxAge)
+                    if (counts.values.sum() == 0) {
+                        return@filter true
+                    }
+
+                    runBlocking { view.showAutoDeleteWarningDialog(counts.values.sum()) }
+                }
+                .doOnNext { maxAge ->
+                    when (maxAge == 0) {
+                        true -> AutoDeleteService.cancelJob(context)
+                        false -> {
+                            AutoDeleteService.scheduleJob(context)
+                            deleteOldMessages.execute(Unit)
+                        }
+                    }
+                }
+                .doOnNext(prefs.autoDelete::set)
                 .autoDisposable(view.scope())
                 .subscribe()
 

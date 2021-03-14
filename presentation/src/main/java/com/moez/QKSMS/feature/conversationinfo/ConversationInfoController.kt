@@ -20,16 +20,15 @@ package com.moez.QKSMS.feature.conversationinfo
 
 import android.view.View
 import androidx.appcompat.app.AlertDialog
+import androidx.recyclerview.widget.GridLayoutManager
 import com.bluelinelabs.conductor.RouterTransaction
-import com.jakewharton.rxbinding2.view.clicks
 import com.moez.QKSMS.R
 import com.moez.QKSMS.common.Navigator
 import com.moez.QKSMS.common.QkChangeHandler
 import com.moez.QKSMS.common.base.QkController
-import com.moez.QKSMS.common.util.extensions.animateLayoutChanges
 import com.moez.QKSMS.common.util.extensions.scrapViews
-import com.moez.QKSMS.common.util.extensions.setVisible
-import com.moez.QKSMS.common.widget.FieldDialog
+import com.moez.QKSMS.common.widget.TextInputDialog
+import com.moez.QKSMS.databinding.ConversationInfoControllerBinding
 import com.moez.QKSMS.feature.blocking.BlockingDialog
 import com.moez.QKSMS.feature.conversationinfo.injection.ConversationInfoModule
 import com.moez.QKSMS.feature.themepicker.ThemePickerController
@@ -39,22 +38,20 @@ import com.uber.autodispose.autoDisposable
 import io.reactivex.Observable
 import io.reactivex.subjects.PublishSubject
 import io.reactivex.subjects.Subject
-import kotlinx.android.synthetic.main.conversation_info_controller.*
 import javax.inject.Inject
 
 class ConversationInfoController(
     val threadId: Long = 0
-) : QkController<ConversationInfoView, ConversationInfoState, ConversationInfoPresenter>(), ConversationInfoView {
+) : QkController<ConversationInfoView, ConversationInfoState, ConversationInfoPresenter,
+        ConversationInfoControllerBinding>(ConversationInfoControllerBinding::inflate), ConversationInfoView {
 
     @Inject override lateinit var presenter: ConversationInfoPresenter
     @Inject lateinit var blockingDialog: BlockingDialog
     @Inject lateinit var navigator: Navigator
-    @Inject lateinit var recipientAdapter: ConversationRecipientAdapter
-    @Inject lateinit var mediaAdapter: ConversationMediaAdapter
-    @Inject lateinit var itemDecoration: GridSpacingItemDecoration
+    @Inject lateinit var adapter: ConversationInfoAdapter
 
-    private val nameDialog: FieldDialog by lazy {
-        FieldDialog(activity!!, activity!!.getString(R.string.info_name), nameChangeSubject::onNext)
+    private val nameDialog: TextInputDialog by lazy {
+        TextInputDialog(activity!!, activity!!.getString(R.string.info_name), nameChangeSubject::onNext)
     }
 
     private val nameChangeSubject: Subject<String> = PublishSubject.create()
@@ -66,22 +63,20 @@ class ConversationInfoController(
                 .conversationInfoModule(ConversationInfoModule(this))
                 .build()
                 .inject(this)
-
-        layoutRes = R.layout.conversation_info_controller
     }
 
     override fun onViewCreated() {
-        items.postDelayed({ items?.animateLayoutChanges = true }, 100)
+        binding.recyclerView.adapter = adapter
+        binding.recyclerView.addItemDecoration(GridSpacingItemDecoration(adapter, activity!!))
+        binding.recyclerView.layoutManager = GridLayoutManager(activity, 3).apply {
+            spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
+                override fun getSpanSize(position: Int): Int = if (adapter.getItemViewType(position) == 2) 1 else 3
+            }
+        }
 
-        recipients.adapter = recipientAdapter
-
-        media.adapter = mediaAdapter
-        media.addItemDecoration(itemDecoration)
-
-        themedActivity
-                ?.theme
+        themedActivity?.theme
                 ?.autoDisposable(scope())
-                ?.subscribe { recipients?.scrapViews() }
+                ?.subscribe { binding.recyclerView.scrapViews() }
     }
 
     override fun onAttach(view: View) {
@@ -91,59 +86,31 @@ class ConversationInfoController(
         showBackButton(true)
     }
 
-    override fun recipientClicks(): Observable<Long> = recipientAdapter.clicks
-
-    override fun nameClicks(): Observable<*> = name.clicks()
-
-    override fun nameChanges(): Observable<String> = nameChangeSubject
-
-    override fun notificationClicks(): Observable<*> = notifications.clicks()
-
-    override fun themeClicks(): Observable<*> = themePrefs.clicks()
-
-    override fun archiveClicks(): Observable<*> = archive.clicks()
-
-    override fun blockClicks(): Observable<*> = block.clicks()
-
-    override fun deleteClicks(): Observable<*> = delete.clicks()
-
-    override fun confirmDelete(): Observable<*> = confirmDeleteSubject
-
     override fun render(state: ConversationInfoState) {
         if (state.hasError) {
             activity?.finish()
             return
         }
 
-        themedActivity?.threadId?.onNext(state.threadId)
-        recipientAdapter.threadId = state.threadId
-        recipientAdapter.updateData(state.recipients)
-
-        name.setVisible(state.recipients?.size ?: 0 >= 2)
-        name.summary = state.name
-
-        notifications.isEnabled = !state.blocked
-
-        themePrefs.isEnabled = !state.blocked
-
-        archive.isEnabled = !state.blocked
-        archive.title = activity?.getString(when (state.archived) {
-            true -> R.string.info_unarchive
-            false -> R.string.info_archive
-        })
-
-        block.title = activity?.getString(when (state.blocked) {
-            true -> R.string.info_unblock
-            false -> R.string.info_block
-        })
-
-        mediaAdapter.updateData(state.media)
+        adapter.data = state.data
     }
+
+    override fun recipientClicks(): Observable<Long> = adapter.recipientClicks
+    override fun recipientLongClicks(): Observable<Long> = adapter.recipientLongClicks
+    override fun themeClicks(): Observable<Long> = adapter.themeClicks
+    override fun nameClicks(): Observable<*> = adapter.nameClicks
+    override fun nameChanges(): Observable<String> = nameChangeSubject
+    override fun notificationClicks(): Observable<*> = adapter.notificationClicks
+    override fun archiveClicks(): Observable<*> = adapter.archiveClicks
+    override fun blockClicks(): Observable<*> = adapter.blockClicks
+    override fun deleteClicks(): Observable<*> = adapter.deleteClicks
+    override fun confirmDelete(): Observable<*> = confirmDeleteSubject
+    override fun mediaClicks(): Observable<Long> = adapter.mediaClicks
 
     override fun showNameDialog(name: String) = nameDialog.setText(name).show()
 
-    override fun showThemePicker(threadId: Long) {
-        router.pushController(RouterTransaction.with(ThemePickerController(threadId))
+    override fun showThemePicker(recipientId: Long) {
+        router.pushController(RouterTransaction.with(ThemePickerController(recipientId))
                 .pushChangeHandler(QkChangeHandler())
                 .popChangeHandler(QkChangeHandler()))
     }

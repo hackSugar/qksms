@@ -27,6 +27,7 @@ import android.os.Binder;
 import android.os.Bundle;
 import android.provider.Telephony;
 import android.text.TextUtils;
+
 import com.android.mms.service_alt.exception.MmsHttpException;
 import com.google.android.mms.MmsException;
 import com.google.android.mms.pdu_alt.GenericPdu;
@@ -37,6 +38,7 @@ import com.google.android.mms.pdu_alt.RetrieveConf;
 import com.google.android.mms.util_alt.SqliteWrapper;
 import com.klinker.android.send_message.BroadcastUtils;
 import com.klinker.android.send_message.Transaction;
+
 import timber.log.Timber;
 
 /**
@@ -167,7 +169,7 @@ public class DownloadRequest extends MmsRequest {
 //            }
             // Store the downloaded message
             final PduPersister persister = PduPersister.getPduPersister(context);
-            final Uri messageUri = persister.persist(pdu, Telephony.Mms.Inbox.CONTENT_URI, true, true, null);
+            final Uri messageUri = persister.persist(pdu, Telephony.Mms.Inbox.CONTENT_URI, PduPersister.DUMMY_THREAD_ID, true, true, null);
             if (messageUri == null) {
                 Timber.e("DownloadRequest.persistIfRequired: can not persist message");
                 return null;
@@ -176,6 +178,10 @@ public class DownloadRequest extends MmsRequest {
             // Update some of the properties of the message
             final ContentValues values = new ContentValues();
             values.put(Telephony.Mms.DATE, System.currentTimeMillis() / 1000L);
+            try {
+                values.put(Telephony.Mms.DATE_SENT, retrieveConf.getDate());
+            } catch (Exception ignored) {
+            }
             values.put(Telephony.Mms.READ, 0);
             values.put(Telephony.Mms.SEEN, 0);
             if (!TextUtils.isEmpty(creator)) {

@@ -28,6 +28,7 @@ data class SettingsState(
     val nightStart: String = "",
     val nightEnd: String = "",
     val black: Boolean = false,
+    val autoColor: Boolean = true,
     val autoEmojiEnabled: Boolean = true,
     val notificationsEnabled: Boolean = true,
     val sendDelaySummary: String = "",
@@ -40,7 +41,9 @@ data class SettingsState(
     val splitSmsEnabled: Boolean = false,
     val stripUnicodeEnabled: Boolean = false,
     val mobileOnly: Boolean = false,
+    val autoDelete: Int = 0,
+    val longAsMms: Boolean = false,
     val maxMmsSizeSummary: String = "100KB",
     val maxMmsSizeId: Int = 100,
-    val syncProgress: SyncRepository.SyncProgress = SyncRepository.SyncProgress.Idle()
+    val syncProgress: SyncRepository.SyncProgress = SyncRepository.SyncProgress.Idle
 )

@@ -33,6 +33,7 @@
     <uses-permission android:name="android.permission.RECEIVE_MMS" />
     <uses-permission android:name="android.permission.RECEIVE_SMS" />
     <uses-permission android:name="android.permission.SEND_SMS" />
+    <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WRITE_SMS" />
@@ -42,6 +43,7 @@
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
+        android:requestLegacyExternalStorage="true"
         android:supportsRtl="true"
         android:theme="@style/AppLaunchTheme">
 
@@ -89,6 +91,11 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="image/*" />
             </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/x-vcard" />
+            </intent-filter>
 
             <meta-data
                 android:name="android.service.chooser.chooser_target_service"
@@ -110,6 +117,7 @@
             android:windowSoftInputMode="adjustResize" />
         <activity android:name=".feature.scheduled.ScheduledActivity" />
         <activity android:name=".feature.backup.BackupActivity" />
+        <activity android:name=".feature.contacts.ContactsActivity" />
 
         <receiver android:name=".receiver.BootReceiver">
             <intent-filter>
@@ -148,6 +156,8 @@
         <receiver
             android:name=".receiver.MmsReceivedReceiver"
             android:taskAffinity="com.klinker.android.messaging.MMS_RECEIVED" />
+        <receiver android:name=".receiver.MarkArchivedReceiver" />
+        <receiver android:name=".receiver.BlockThreadReceiver" />
         <receiver android:name=".receiver.MarkSeenReceiver" />
         <receiver android:name=".receiver.MarkReadReceiver" />
         <receiver android:name=".receiver.RemoteMessagingReceiver" />
@@ -175,6 +185,9 @@
         <service
             android:name=".feature.widget.WidgetService"
             android:permission="android.permission.BIND_REMOTEVIEWS" />
+        <service
+            android:name=".service.AutoDeleteService"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
         <service
             android:name=".service.HeadlessSmsSendService"
             android:exported="true"

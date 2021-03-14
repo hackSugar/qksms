@@ -23,18 +23,15 @@ import androidx.annotation.StringRes
 import androidx.core.view.inputmethod.InputContentInfoCompat
 import com.moez.QKSMS.common.base.QkView
 import com.moez.QKSMS.model.Attachment
-import com.moez.QKSMS.model.Contact
+import com.moez.QKSMS.model.Recipient
 import io.reactivex.Observable
 import io.reactivex.subjects.Subject
 
 interface ComposeView : QkView<ComposeState> {
 
     val activityVisibleIntent: Observable<Boolean>
-    val queryChangedIntent: Observable<CharSequence>
-    val queryBackspaceIntent: Observable<*>
-    val queryEditorActionIntent: Observable<Int>
-    val chipSelectedIntent: Subject<Contact>
-    val chipDeletedIntent: Subject<Contact>
+    val chipsSelectedIntent: Subject<HashMap<String, String?>>
+    val chipDeletedIntent: Subject<Recipient>
     val menuReadyIntent: Observable<Unit>
     val optionsItemIntent: Observable<Int>
     val sendAsGroupIntent: Observable<*>
@@ -64,6 +61,9 @@ interface ComposeView : QkView<ComposeState> {
     fun requestDefaultSms()
     fun requestStoragePermission()
     fun requestSmsPermission()
+    fun showContacts(sharing: Boolean, chips: List<Recipient>)
+    fun themeChanged()
+    fun showKeyboard()
     fun requestCamera()
     fun requestGallery()
     fun requestDatePicker()
