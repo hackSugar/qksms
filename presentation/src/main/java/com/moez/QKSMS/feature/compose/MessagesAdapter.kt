@@ -258,16 +258,16 @@ class MessagesAdapter @Inject constructor(
         val privKeyActual = kfac.generatePrivate(keySpec)
 
 
-        var messageReal = ""
-        if (message.isSms()) {
-            Log.i("WEASEL_MESSAGE_RECEIVED", message.body)
+        val messageReal = if (message.isSms() && !message.isMe()) {
+            Log.i("MESSAGE_IN_TRANSIT", message.body)
             try {
-                messageReal = WeaselDemo.decrypt(message.body, privKeyActual)
+                WeaselDemo.decrypt(message.body, privKeyActual)
             } catch (e: Exception) {
-                messageReal = message.body
+                message.body
             }
+        } else {
+            message.body
         }
-
 
         // Bind the body text
         val messageText = when (message.isSms()) {
