@@ -35,6 +35,8 @@ import java.security.KeyFactory
 import java.security.PrivateKey
 import java.security.spec.X509EncodedKeySpec
 import java.security.spec.PKCS8EncodedKeySpec
+import javax.crypto.KeyGenerator
+import javax.crypto.SecretKey
 
 
 class SendMessage @Inject constructor(
@@ -104,6 +106,7 @@ class SendMessage @Inject constructor(
                 val keySpec = PKCS8EncodedKeySpec(pkcs8EncodedBytes)
                 val kfac = KeyFactory.getInstance("RSA")
                 val privKey = kfac.generatePrivate(keySpec)
+
                 println("BODY: " + params.addresses[0])
                 val encrypted = encrypt(params.body, pubKeyActual);
                 print(decrypt(encrypt(params.body, pubKeyActual), privKey))
